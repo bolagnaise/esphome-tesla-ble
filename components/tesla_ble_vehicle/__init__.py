@@ -35,7 +35,7 @@ from esphome.const import (
 
 CODEOWNERS = ["@yoziru"]
 DEPENDENCIES = ["ble_client"]
-AUTO_LOAD = ["binary_sensor", "button", "switch", "number", "sensor", "text_sensor", "lock", "cover", "climate", "select"]
+AUTO_LOAD = ["binary_sensor", "button", "switch", "number", "sensor", "text_sensor", "lock", "cover", "climate", "select", "json"]
 
 tesla_ble_vehicle_ns = cg.esphome_ns.namespace("tesla_ble_vehicle")
 TeslaBLEVehicle = tesla_ble_vehicle_ns.class_(
@@ -330,6 +330,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_CHARGING_AMPS_MAX, default=DEFAULT_CHARGING_AMPS_MAX): cv.int_range(min=1, max=48),
             # C++ start_pairing() maps these roles to Keys_Role_* enums.
             cv.Optional("charger_power"): sensor.sensor_schema(),
+            cv.Optional("recovery_proof"): cv.use_id(text_sensor.TextSensor),
             cv.Optional(CONF_ROLE, default="DRIVER"): cv.one_of("DRIVER", "CHARGING_MANAGER", upper=True),
             # Polling intervals (in seconds)
             cv.Optional(CONF_VCSEC_POLL_INTERVAL, default=10): cv.int_range(min=5, max=300),
@@ -503,6 +504,11 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await ble_client.register_ble_node(var, config)
+    if "recovery_proof" in config:
+        cg.add_define("USE_POWERSYNC_BLE_RECOVERY")
+        proof = await cg.get_variable(config["recovery_proof"])
+        cg.add(var.set_recovery_proof(proof))
+
 
     # tesla-ble stores its private key with mbedtls_pk_write_key_pem; without a
     # TLS user ESPHome 2026.10+ compiles PEM writing (and the rest of TLS) out.
