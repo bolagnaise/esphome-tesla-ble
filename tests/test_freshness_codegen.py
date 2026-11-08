@@ -46,11 +46,25 @@ def main():
             actions = re.search(callback[1] + r"->add_actions\(\{(\w+)\}\)", source)
             assert actions, fixture
             action = actions[1]
-            assert f"new({action}) text_sensor::TextSensorPublishAction<float>(charger_power_received)" in source, fixture
-            assert re.search(
-                action + r"->set_state\(\[\]\(float x\) -> std::string \{.*?homeassistant_time->utcnow\(\)",
-                source, re.S,
-            ), fixture
+            if f"new({action}) text_sensor::TextSensorPublishAction<float>(charger_power_received)" in source:
+                assert re.search(
+                    action + r"->set_state\(\[\]\(float x\) -> std::string \{.*?homeassistant_time->utcnow\(\)",
+                    source, re.S,
+                ), fixture
+            else:
+                # ESPHome 2026.10.2 emits an ApplyAction instead of the
+                # TextSensorPublishAction class. Follow that exact action's
+                # function so an unrelated timestamp lambda cannot pass.
+                apply = re.search(r"new\(" + action + r"\) ApplyAction<(\w+), float>\(\)", source)
+                assert apply, fixture
+                definition = re.search(r"static void " + apply[1] + r"\([^;]+?\) \{", source)
+                assert definition, fixture
+                start = definition.start()
+                body = source[start:source.index("\n}", start)]
+                assert "::charger_power_received->publish_state(" in body, fixture
+                assert "homeassistant_time->utcnow()" in body, fixture
+                assert "std::isfinite(x)" in body and "!received.is_valid()" in body, fixture
+                assert 'received.strftime("%Y-%m-%dT%H:%M:%SZ")' in body, fixture
             assert '!received.is_valid()' in source, fixture
             assert 'std::isfinite(x)' in source, fixture
             assert 'return std::string("unavailable")' in source, fixture
